@@ -1,0 +1,35 @@
+name: check-twenty
+on:
+  push:
+    branches: [check-twenty]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift
+          sudo docker system prune -af
+          df -h /
+      - run: pip install pyyaml
+      - name: tools/check
+        run: tools/check --no-shell twenty
+      - name: Offline tests with agent limits
+        run: |
+          docker run --rm --network none --cpus 2 --memory 8g -w /src oss-scanner-check/built:twenty bash -c '
+            set -x
+            service postgresql start && service redis-server start
+            npx nx test twenty-shared
+            (cd packages/twenty-server && npx jest src/engine/guards --config jest.config.mjs)
+            (npx nx start twenty-server > /tmp/server.log 2>&1 &)
+            for i in $(seq 1 90); do curl -sf http://localhost:3000/healthz && break; sleep 5; done
+            curl -sf http://localhost:3000/healthz || { tail -100 /tmp/server.log; exit 1; }
+            curl -s -X POST http://localhost:3000/metadata -H "content-type: application/json" \
+              -d "{\"query\":\"mutation { getLoginTokenFromCredentials(email: \\\"tim@apple.dev\\\", password: \\\"tim@apple.dev\\\", origin: \\\"http://apple.localhost:3001\\\") { loginToken { token } } }\"}"
+            echo
+            pkill -f "nest start" || true
+            cd packages/twenty-server && NODE_ENV=test npx nx database:reset twenty-server > /tmp/reset.log 2>&1 || tail -50 /tmp/reset.log
+            NODE_ENV=test npx jest --config ./jest-integration.config.ts test/integration/graphql/suites/auth.integration-spec.ts
+          '
