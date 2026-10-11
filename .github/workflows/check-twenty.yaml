@@ -30,6 +30,6 @@ jobs:
               -d "{\"query\":\"mutation { getLoginTokenFromCredentials(email: \\\"tim@apple.dev\\\", password: \\\"tim@apple.dev\\\", origin: \\\"http://apple.localhost:3001\\\") { loginToken { token } } }\"}"
             echo
             pkill -f "nest start" || true
-            cd packages/twenty-server && NODE_ENV=test npx nx database:reset twenty-server > /tmp/reset.log 2>&1 || tail -50 /tmp/reset.log
-            NODE_ENV=test npx jest --config ./jest-integration.config.ts test/integration/graphql/suites/auth.integration-spec.ts
+            cd packages/twenty-server && NODE_ENV=test npx nx database:reset twenty-server > /tmp/reset.log 2>&1 || { tail -50 /tmp/reset.log; exit 1; }
+            NODE_ENV=test NODE_OPTIONS="--max-old-space-size=6144" npx jest --config ./jest-integration.config.ts test/integration/graphql/suites/auth.integration-spec.ts test/integration/rest/suites
           '
